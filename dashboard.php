@@ -24,33 +24,36 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 
         if(!$title||$amount<=0){
             flash('Title and valid amount required.','danger');
-        } else {
-            // Budget check — block if exceeds limit
+            header("Location: dashboard.php?p=expenses&act=".($eid?'edit&id='.$eid:'add'));exit;
+        }
+
+        // Budget check ONLY for current month expenses
+        $expM=(int)date('n',strtotime($date));
+        $expY=(int)date('Y',strtotime($date));
+        if($expM===$m&&$expY===$y){
             $st=$db->prepare("SELECT monthly_limit FROM budgets WHERE user_id=? AND month=? AND year=?");
-            $st->execute([$uid,(int)date('n',strtotime($date)),(int)date('Y',strtotime($date))]);
-            $lim=(float)($st->fetchColumn()?:0);
+            $st->execute([$uid,$m,$y]);$lim=(float)($st->fetchColumn()?:0);
             if($lim>0){
                 $st2=$db->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=? AND MONTH(expense_date)=? AND YEAR(expense_date)=? AND expense_id!=?");
-                $st2->execute([$uid,(int)date('n',strtotime($date)),(int)date('Y',strtotime($date)),$eid]);
-                $spent=(float)$st2->fetchColumn();
+                $st2->execute([$uid,$m,$y,$eid]);$spent=(float)$st2->fetchColumn();
                 if($spent+$amount>$lim){
                     $rem=max($lim-$spent,0);
-                    flash('❌ Budget exceeded! Limit: '.tk($lim).' · Spent: '.tk($spent).' · Remaining: '.tk($rem).'. You cannot add '.tk($amount).'.','danger');
+                    flash('❌ Budget exceeded! Limit: '.tk($lim).' · Spent: '.tk($spent).' · Remaining: '.tk($rem).'. Cannot add '.tk($amount).'.','danger');
                     header("Location: dashboard.php?p=expenses&act=".($eid?'edit&id='.$eid:'add'));exit;
                 }
             }
-            if($eid){
-                $db->prepare("UPDATE expenses SET title=?,amount=?,category_id=?,expense_date=? WHERE expense_id=? AND user_id=?")
-                   ->execute([$title,$amount,$cat,$date,$eid,$uid]);
-                flash('Expense updated.');
-            } else {
-                $db->prepare("INSERT INTO expenses(user_id,category_id,title,amount,expense_date)VALUES(?,?,?,?,?)")
-                   ->execute([$uid,$cat,$title,$amount,$date]);
-                flash('Expense added.');
-            }
-            header("Location: dashboard.php?p=expenses");exit;
         }
-        header("Location: dashboard.php?p=expenses&act=".($eid?'edit&id='.$eid:'add'));exit;
+
+        if($eid){
+            $db->prepare("UPDATE expenses SET title=?,amount=?,category_id=?,expense_date=? WHERE expense_id=? AND user_id=?")
+               ->execute([$title,$amount,$cat,$date,$eid,$uid]);
+            flash('Expense updated.');
+        } else {
+            $db->prepare("INSERT INTO expenses(user_id,category_id,title,amount,expense_date)VALUES(?,?,?,?,?)")
+               ->execute([$uid,$cat,$title,$amount,$date]);
+            flash('Expense added.');
+        }
+        header("Location: dashboard.php?p=expenses");exit;
     }
 
     if($act==='del_expense'){
@@ -178,7 +181,7 @@ tr:last-child td{border-bottom:none}
     <div class="text-white/25 text-xs mt-0.5">Track Smart, Spend Better</div>
   </div>
   <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-    <?php foreach([['home','Dashboard','🏠'],['expenses','Expenses','💸'],['categories','Categories','🏷️'],['savings','Savings','🏦'],['profile','Profile','👤']] as[$k,$l,$i]):$a=$page===$k;?>
+    <?php foreach([['home','Dashboard','🏠'],['expenses','Expenses','💸'],['categories','Categories','🏷️'],['savings','Savings','🏦'],['profile','Profile','👤']]as[$k,$l,$i]):$a=$page===$k;?>
     <a href="dashboard.php?p=<?=$k?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition <?=$a?'na':'ni'?>"><span><?=$i?></span><?=$l?></a>
     <?php endforeach;?>
   </nav>
@@ -207,11 +210,24 @@ tr:last-child td{border-bottom:none}
 if($page==='home'):
 $st=$db->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=?");$st->execute([$uid]);$allTotal=(float)$st->fetchColumn();
 $st=$db->prepare("SELECT COUNT(*) FROM expenses WHERE user_id=? AND MONTH(expense_date)=? AND YEAR(expense_date)=?");$st->execute([$uid,$m,$y]);$expCount=(int)$st->fetchColumn();
-$st=$db->prepare("SELECT c.category_name,c.category_color,COALESCE(SUM(e.amount),0) AS total FROM categories c LEFT JOIN expenses e ON e.category_id=c.category_id AND MONTH(e.expense_date)=? AND YEAR(e.expense_date)=? WHERE c.user_id=? GROUP BY c.category_id HAVING total>0 ORDER BY total DESC");
+
+// PIE: all expenses this month by category
+$st=$db->prepare("SELECT c.category_name,c.category_color,COALESCE(SUM(e.amount),0) AS total
+    FROM categories c
+    LEFT JOIN expenses e ON e.category_id=c.category_id AND MONTH(e.expense_date)=? AND YEAR(e.expense_date)=?
+    WHERE c.user_id=? GROUP BY c.category_id HAVING total>0 ORDER BY total DESC");
 $st->execute([$m,$y,$uid]);$catData=$st->fetchAll();
+
+// BAR: last 6 months expenses
 $barL=[];$barA=[];
-for($i=5;$i>=0;$i--){$dt=new DateTime("first day of -$i month");$barL[]=$dt->format('M');$s2=$db->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=? AND MONTH(expense_date)=? AND YEAR(expense_date)=?");$s2->execute([$uid,(int)$dt->format('n'),(int)$dt->format('Y')]);$barA[]=(float)$s2->fetchColumn();}
-$st=$db->prepare("SELECT e.*,c.category_name,c.category_color FROM expenses e LEFT JOIN categories c ON c.category_id=e.category_id WHERE e.user_id=? ORDER BY e.expense_date DESC,e.created_at DESC LIMIT 5");$st->execute([$uid]);$recent=$st->fetchAll();
+for($i=5;$i>=0;$i--){
+    $dt=new DateTime("first day of -$i month");$barL[]=$dt->format('M');
+    $s2=$db->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=? AND MONTH(expense_date)=? AND YEAR(expense_date)=?");
+    $s2->execute([$uid,(int)$dt->format('n'),(int)$dt->format('Y')]);$barA[]=(float)$s2->fetchColumn();
+}
+
+$st=$db->prepare("SELECT e.*,c.category_name,c.category_color FROM expenses e LEFT JOIN categories c ON c.category_id=e.category_id WHERE e.user_id=? ORDER BY e.expense_date DESC,e.created_at DESC LIMIT 5");
+$st->execute([$uid]);$recent=$st->fetchAll();
 $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
 ?>
 <div class="flex justify-between items-center mb-6">
@@ -221,25 +237,27 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
 
 <?php if($budget>0&&$budgetPct>=90):?>
 <div class="mb-5 px-4 py-3 rounded-xl text-sm font-semibold border <?=$overBudget?'bg-red-500/15 text-red-300 border-red-500/30':'bg-a/10 text-a border-a/25'?>">
-  <?=$overBudget?'⚠ Budget exceeded! Spent '.tk($monthTotal).' of '.tk($budget).' limit.':'⚠ '.round($budgetPct).'% of '.date('F').' budget used. '.tk($budgetLeft).' remaining.'?>
+  <?=$overBudget?'⚠ Budget exceeded! Spent '.tk($monthTotal).' of '.tk($budget).'.':'⚠ '.round($budgetPct).'% used. '.tk($budgetLeft).' remaining.'?>
 </div>
 <?php endif;?>
 
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="sc <?=$overBudget?'border-red-500/30':''?>">
+  <div class="sc <?=$overBudget?'':'border-white/10'?>" style="<?=$overBudget?'border-color:rgba(239,68,68,.3)':''?>">
     <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">💸 Spent</div>
     <div class="text-2xl font-bold font-mono <?=$overBudget?'text-red-400':'text-a'?>"><?=tk($monthTotal)?></div>
     <div class="text-xs text-white/25 mt-1"><?=date('F')?> expenses only</div>
     <?php if($budget>0):?>
-    <div class="mt-2.5 h-1.5 rounded-full overflow-hidden" style="background:rgba(255,255,255,.08)"><div class="h-full rounded-full" style="width:<?=$budgetPct?>%;background:<?=$bc?>"></div></div>
+    <div class="mt-2.5 h-1.5 rounded-full overflow-hidden" style="background:rgba(255,255,255,.08)">
+      <div class="h-full rounded-full" style="width:<?=$budgetPct?>%;background:<?=$bc?>"></div>
+    </div>
     <div class="flex justify-between text-xs text-white/25 mt-1"><span><?=round($budgetPct)?>% used</span><span>of <?=tk($budget)?></span></div>
     <?php endif;?>
   </div>
-  <div class="sc <?=$overBudget?'border-red-500/30':($budgetPct>=90?'border-a/30':'')?>">
+  <div class="sc" style="<?=$overBudget?'border-color:rgba(239,68,68,.3)':($budgetPct>=90?'border-color:rgba(245,158,11,.3)':'')?>">
     <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">💰 Budget Left</div>
     <?php if($budget>0):?>
     <div class="text-2xl font-bold font-mono <?=$overBudget?'text-red-400':($budgetPct>=90?'text-a':'text-g')?>"><?=$overBudget?'-'.tk($monthTotal-$budget):tk($budgetLeft)?></div>
-    <div class="text-xs text-white/25 mt-1"><?=$overBudget?'Over limit':'Remaining budget'?></div>
+    <div class="text-xs text-white/25 mt-1"><?=$overBudget?'Over limit':'Remaining'?></div>
     <?php else:?><div class="text-lg font-bold text-white/30">No limit</div><a href="dashboard.php?p=profile" class="text-xs text-a hover:underline">Set budget →</a><?php endif;?>
   </div>
   <div class="sc">
@@ -248,9 +266,9 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
     <div class="text-xs text-white/25 mt-1">this month</div>
   </div>
   <div class="sc" style="background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2)">
-    <div class="text-xs font-semibold text-g/60 uppercase tracking-wider mb-2">🔒 Sealed Savings</div>
+    <div class="text-xs font-semibold text-g/60 uppercase tracking-wider mb-2">🔒 Savings</div>
     <div class="text-2xl font-bold font-mono text-g"><?=tk($savingsBalance)?></div>
-    <div class="text-xs text-white/25 mt-1">independent vault</div>
+    <div class="text-xs text-white/25 mt-1">sealed vault</div>
     <a href="dashboard.php?p=savings" class="text-xs text-g hover:underline mt-1 block">Manage →</a>
   </div>
 </div>
@@ -258,7 +276,7 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
   <div class="card p-5">
     <div class="text-sm font-bold mb-0.5">📊 Spending by Category</div>
-    <div class="text-xs text-white/30 mb-4"><?=date('F Y')?> · <?=tk($monthTotal)?> · savings excluded</div>
+    <div class="text-xs text-white/30 mb-4"><?=date('F Y')?> · Total: <?=tk($monthTotal)?></div>
     <?php if($catData):?>
     <div class="relative h-44 mb-4"><canvas id="pieChart"></canvas></div>
     <div class="space-y-2">
@@ -266,13 +284,17 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
       <div class="flex items-center gap-2">
         <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:<?=e($cd['category_color'])?>"></span>
         <span class="text-xs text-white/65 flex-1 truncate"><?=e($cd['category_name'])?></span>
-        <div class="w-20 h-1.5 rounded-full overflow-hidden flex-shrink-0" style="background:rgba(255,255,255,.08)"><div class="h-full rounded-full" style="width:<?=$pct?>%;background:<?=e($cd['category_color'])?>"></div></div>
+        <div class="w-20 h-1.5 rounded-full overflow-hidden flex-shrink-0" style="background:rgba(255,255,255,.08)">
+          <div class="h-full rounded-full" style="width:<?=$pct?>%;background:<?=e($cd['category_color'])?>"></div>
+        </div>
         <span class="text-xs font-mono text-white/35 w-8 text-right"><?=$pct?>%</span>
         <span class="text-xs font-mono font-bold text-a w-20 text-right"><?=tk($cd['total'])?></span>
       </div>
       <?php endforeach;?>
     </div>
-    <?php else:?><div class="h-44 flex items-center justify-center text-sm text-white/25">No expenses this month.</div><?php endif;?>
+    <?php else:?>
+    <div class="h-44 flex items-center justify-center text-sm text-white/25">No expenses this month.</div>
+    <?php endif;?>
   </div>
   <div class="card p-5">
     <div class="text-sm font-bold mb-0.5">📈 Last 6 Months</div>
@@ -306,7 +328,7 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
     <div class="text-3xl font-bold font-mono text-g mb-1"><?=tk($savingsBalance)?></div>
     <div class="text-xs text-white/25 mb-4">sealed balance</div>
     <a href="dashboard.php?p=savings" class="bp w-full justify-center" style="background:#10b981;width:100%;justify-content:center">Manage Vault</a>
-    <?php $st=$db->prepare("SELECT type,amount,note,created_at FROM savings WHERE user_id=? ORDER BY created_at DESC LIMIT 3");$st->execute([$uid]);$rs=$st->fetchAll();
+    <?php $st=$db->prepare("SELECT type,amount,created_at FROM savings WHERE user_id=? ORDER BY created_at DESC LIMIT 3");$st->execute([$uid]);$rs=$st->fetchAll();
     if($rs):?><div class="mt-4 pt-4 space-y-2" style="border-top:1px solid rgba(255,255,255,.08)">
     <?php foreach($rs as $s):?>
     <div class="flex justify-between items-center">
@@ -320,9 +342,25 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
 <script>
 const co={maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Inter',size:11},color:'rgba(255,255,255,.4)',boxWidth:9,padding:10}}}};
 <?php if($catData):?>
-new Chart(document.getElementById('pieChart'),{type:'doughnut',data:{labels:<?=json_encode(array_column($catData,'category_name'))?>,datasets:[{data:<?=json_encode(array_column($catData,'total'))?>,backgroundColor:<?=json_encode(array_column($catData,'category_color'))?>,borderWidth:3,borderColor:'rgba(15,23,42,.9)',hoverOffset:8}]},options:{...co,cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return' ৳'+ctx.raw.toLocaleString()+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}}}});
+new Chart(document.getElementById('pieChart'),{type:'doughnut',
+  data:{labels:<?=json_encode(array_column($catData,'category_name'))?>,
+    datasets:[{data:<?=json_encode(array_column($catData,'total'))?>,
+      backgroundColor:<?=json_encode(array_column($catData,'category_color'))?>,
+      borderWidth:3,borderColor:'rgba(15,23,42,.9)',hoverOffset:8}]},
+  options:{...co,cutout:'60%',plugins:{legend:{display:false},
+    tooltip:{callbacks:{label:function(ctx){const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return' ৳'+ctx.raw.toLocaleString()+' ('+((ctx.raw/t)*100).toFixed(1)+'%)';}}}}
+  }
+});
 <?php endif;?>
-new Chart(document.getElementById('barChart'),{type:'bar',data:{labels:<?=json_encode($barL)?>,datasets:[{data:<?=json_encode($barA)?>,backgroundColor:['rgba(239,68,68,.7)','rgba(59,130,246,.7)','rgba(6,182,212,.7)','rgba(139,92,246,.7)','rgba(16,185,129,.7)','rgba(245,158,11,.9)'],borderWidth:0,borderRadius:8}]},options:{...co,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'rgba(255,255,255,.3)',font:{family:'JetBrains Mono',size:10}}},x:{grid:{display:false},ticks:{color:'rgba(255,255,255,.4)',font:{family:'Inter',size:11}}}}}});
+new Chart(document.getElementById('barChart'),{type:'bar',
+  data:{labels:<?=json_encode($barL)?>,
+    datasets:[{data:<?=json_encode($barA)?>,
+      backgroundColor:['rgba(239,68,68,.7)','rgba(59,130,246,.7)','rgba(6,182,212,.7)','rgba(139,92,246,.7)','rgba(16,185,129,.7)','rgba(245,158,11,.9)'],
+      borderWidth:0,borderRadius:8}]},
+  options:{...co,plugins:{legend:{display:false}},
+    scales:{y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'rgba(255,255,255,.3)',font:{family:'JetBrains Mono',size:10}}},
+      x:{grid:{display:false},ticks:{color:'rgba(255,255,255,.4)',font:{family:'Inter',size:11}}}}}
+});
 </script>
 
 <?php
@@ -347,10 +385,11 @@ $st=$db->prepare("SELECT COALESCE(SUM(e.amount),0) FROM expenses e $wh");$st->ex
 
 <?php if($sub==='add'||$sub==='edit'):?>
 <?php if($budget>0):$rem=max($budget-$monthTotal,0);?>
-<div class="mb-4 px-4 py-3 rounded-xl text-sm border <?=$overBudget?'bg-red-500/15 text-red-300 border-red-500/30':($budgetPct>=90?'bg-a/10 text-a border-a/25':'bg-g/10 text-g border-g/25')?>">
-  <?php if($overBudget):?>❌ Budget already exceeded — you cannot add more expenses this month.
-  <?php elseif($budgetPct>=90):?>⚠ Only <?=tk($rem)?> remaining in your <?=date('F')?> budget.
-  <?php else:?>✅ <?=tk($rem)?> available in your <?=date('F')?> budget.<?php endif;?>
+<div class="mb-4 px-4 py-3 rounded-xl text-sm border
+  <?=$overBudget?'bg-red-500/15 text-red-300 border-red-500/30':($budgetPct>=90?'bg-a/10 text-a border-a/25':'bg-g/10 text-g border-g/25')?>">
+  <?php if($overBudget):?>❌ <?=date('F')?> budget exceeded. You cannot add more expenses for this month.
+  <?php elseif($budgetPct>=90):?>⚠ Only <?=tk($rem)?> remaining in <?=date('F')?> budget.
+  <?php else:?>✅ <?=tk($rem)?> available in <?=date('F')?> budget.<?php endif;?>
 </div>
 <?php endif;?>
 <div class="card p-6 max-w-lg">
@@ -361,10 +400,14 @@ $st=$db->prepare("SELECT COALESCE(SUM(e.amount),0) FROM expenses e $wh");$st->ex
     <label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Title</label>
     <input type="text" name="title" class="<?=$IF?> mb-4" value="<?=e($editing['title']??'')?>" placeholder="e.g. Lunch" required autofocus>
     <div class="grid grid-cols-2 gap-3 mb-4">
-      <div><label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Amount (৳)</label>
-        <input type="number" name="amount" step="0.01" min="0.01" <?=$budget>0&&!$editing?'max="'.max($budget-$monthTotal,0).'"':''?> class="<?=$IF?>" value="<?=$editing?$editing['amount']:''?>" placeholder="0.00" required></div>
-      <div><label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Date</label>
-        <input type="date" name="expense_date" class="<?=$IF?>" value="<?=$editing?$editing['expense_date']:date('Y-m-d')?>" required></div>
+      <div>
+        <label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Amount (৳)</label>
+        <input type="number" name="amount" step="0.01" min="0.01" class="<?=$IF?>" value="<?=$editing?$editing['amount']:''?>" placeholder="0.00" required>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Date</label>
+        <input type="date" name="expense_date" class="<?=$IF?>" value="<?=$editing?$editing['expense_date']:date('Y-m-d')?>" required>
+      </div>
     </div>
     <label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Category <span class="normal-case font-normal text-white/20">optional</span></label>
     <select name="category_id" class="<?=$IF?> mb-5">
@@ -372,7 +415,7 @@ $st=$db->prepare("SELECT COALESCE(SUM(e.amount),0) FROM expenses e $wh");$st->ex
       <?php foreach($allCats as $c):?><option value="<?=$c['category_id']?>" <?=($editing&&$editing['category_id']==$c['category_id'])?'selected':''?>><?=e($c['category_name'])?></option><?php endforeach;?>
     </select>
     <div class="flex gap-3">
-      <button type="submit" class="bp" <?=$overBudget&&!$editing?'disabled style="opacity:.4;cursor:not-allowed"':''?>><?=$editing?'Update':'Save Expense'?></button>
+      <button type="submit" class="bp"><?=$editing?'Update':'Save Expense'?></button>
       <a href="dashboard.php?p=expenses" class="bs">Cancel</a>
     </div>
   </form>
@@ -463,7 +506,10 @@ $st->execute([$uid]);$cats=$st->fetchAll();
     <td class="font-mono font-bold text-a"><?=tk($c['spent'])?></td>
     <td class="text-right whitespace-nowrap">
       <a href="dashboard.php?p=categories&act=edit&id=<?=$c['category_id']?>" class="text-xs text-white/35 hover:text-a px-2 py-1 transition mr-1">Edit</a>
-      <form method="POST" action="dashboard.php" class="inline" onsubmit="return confirm('Delete?')"><input type="hidden" name="act" value="del_cat"><input type="hidden" name="cat_id" value="<?=$c['category_id']?>"><button type="submit" class="text-xs text-white/35 hover:text-red-400 px-2 py-1 transition">Del</button></form>
+      <form method="POST" action="dashboard.php" class="inline" onsubmit="return confirm('Delete?')">
+        <input type="hidden" name="act" value="del_cat"><input type="hidden" name="cat_id" value="<?=$c['category_id']?>">
+        <button type="submit" class="text-xs text-white/35 hover:text-red-400 px-2 py-1 transition">Del</button>
+      </form>
     </td>
   </tr>
   <?php endforeach;?>
@@ -545,7 +591,6 @@ $st=$db->prepare("SELECT monthly_limit FROM budgets WHERE user_id=? AND month=? 
 ?>
 <div class="mb-6"><h1 class="text-2xl font-bold">👤 Profile</h1><p class="text-white/35 text-sm mt-0.5">Manage your account</p></div>
 <div class="flex flex-col gap-5 max-w-lg">
-
   <div class="card p-6">
     <p class="text-sm font-bold pb-4 mb-5" style="border-bottom:1px solid rgba(255,255,255,.07)">Account Info</p>
     <form method="POST" action="dashboard.php"><input type="hidden" name="act" value="save_profile">
@@ -558,9 +603,8 @@ $st=$db->prepare("SELECT monthly_limit FROM budgets WHERE user_id=? AND month=? 
       <button type="submit" class="bp">Save Changes</button>
     </form>
   </div>
-
   <div class="card p-6">
-    <p class="text-sm font-bold pb-4 mb-5" style="border-bottom:1px solid rgba(255,255,255,.07)">Monthly Budget <span class="text-xs font-normal text-white/25">· expenses only, savings excluded</span></p>
+    <p class="text-sm font-bold pb-4 mb-5" style="border-bottom:1px solid rgba(255,255,255,.07)">Monthly Budget <span class="text-xs font-normal text-white/25">· expenses only</span></p>
     <form method="POST" action="dashboard.php"><input type="hidden" name="act" value="save_budget">
       <div class="grid grid-cols-2 gap-3 mb-4">
         <div><label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Month</label>
@@ -570,11 +614,10 @@ $st=$db->prepare("SELECT monthly_limit FROM budgets WHERE user_id=? AND month=? 
       </div>
       <label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Monthly Limit (৳)</label>
       <input type="number" name="monthly_limit" class="<?=$IF?> mb-1" step="0.01" min="0" value="<?=e($curBudget)?>" placeholder="e.g. 15000">
-      <p class="text-xs text-white/20 mb-5">Set 0 to remove. Applies to expenses only.</p>
+      <p class="text-xs text-white/20 mb-5">Set 0 to remove limit.</p>
       <button type="submit" class="bp">Update Budget</button>
     </form>
   </div>
-
   <div class="card p-6">
     <p class="text-sm font-bold pb-4 mb-5" style="border-bottom:1px solid rgba(255,255,255,.07)">Change Password</p>
     <form method="POST" action="dashboard.php"><input type="hidden" name="act" value="save_password">
@@ -587,7 +630,6 @@ $st=$db->prepare("SELECT monthly_limit FROM budgets WHERE user_id=? AND month=? 
       <button type="submit" class="bp">Change Password</button>
     </form>
   </div>
-
   <div style="padding-top:.75rem;border-top:1px solid rgba(255,255,255,.07)">
     <a href="logout.php" style="background:rgba(239,68,68,.2);color:#fca5a5;font-weight:600;border-radius:.75rem;padding:.65rem 1.25rem;font-size:.875rem;border:1px solid rgba(239,68,68,.3);display:inline-flex">Sign Out</a>
   </div>
