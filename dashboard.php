@@ -244,8 +244,10 @@ $st = $db->prepare("SELECT c.category_name, c.category_color,
                     FROM categories c
                     LEFT JOIN expenses e ON e.category_id=c.category_id
                       AND MONTH(e.expense_date)=? AND YEAR(e.expense_date)=?
-                    WHERE c.user_id=? AND COALESCE(SUM(e.amount),0)>0
-                    GROUP BY c.category_id ORDER BY total DESC");
+                    WHERE c.user_id=?
+                    GROUP BY c.category_id
+                    HAVING total > 0
+                    ORDER BY total DESC");
 $st->execute([$m,$y,$uid]); $catData = $st->fetchAll();
 
 $barL=[]; $barA=[];
