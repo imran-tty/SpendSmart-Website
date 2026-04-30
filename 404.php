@@ -1,41 +1,20 @@
-<?php require_once 'db.php'; ?>
-<!DOCTYPE html>
+<?php http_response_code(404); ?><!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>404 — SpendSmart</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script>
-tailwind.config = {
-  theme: { extend: {
-    colors: { brand:{ DEFAULT:'#1a3d2b', mid:'#2d5a3d', light:'#e8f0ea' } },
-    fontFamily: { sans:['DM Sans','ui-sans-serif'] }
-  }}
-}
-</script>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%);min-height:100vh;font-family:Inter,sans-serif}</style>
 </head>
-<body class="bg-stone-50 font-sans antialiased min-h-screen flex items-center justify-center p-6">
-<div class="text-center">
-  <div class="text-8xl font-bold text-brand-mid opacity-10 leading-none mb-4">404</div>
-  <h1 class="text-2xl font-semibold text-stone-800 mb-2">Page not found</h1>
-  <p class="text-stone-400 text-sm mb-8">
-    The page you're looking for doesn't exist or was moved.
-  </p>
-  <div class="flex items-center justify-center gap-3">
-    <a href="index.php"
-       class="px-5 py-2.5 rounded-lg bg-brand-mid hover:bg-brand text-white
-              text-sm font-medium transition">
-      ← Go home
-    </a>
-    <?php if (isset($_SESSION['user_id'])): ?>
-    <a href="dashboard.php"
-       class="px-5 py-2.5 rounded-lg bg-stone-100 hover:bg-stone-200
-              text-stone-700 text-sm font-medium transition">
-      Dashboard
-    </a>
-    <?php endif; ?>
+<body class="flex items-center justify-center min-h-screen text-white text-center p-6">
+<div>
+  <div class="text-9xl font-black text-a opacity-20 leading-none mb-4" style="color:#f59e0b">404</div>
+  <h1 class="text-2xl font-bold mb-2">Page not found</h1>
+  <p class="text-white/40 text-sm mb-8">The page you're looking for doesn't exist.</p>
+  <div class="flex gap-3 justify-center">
+    <a href="index.php" style="background:#f59e0b;color:#0f172a;font-weight:700;padding:.75rem 1.5rem;border-radius:.75rem;font-size:.875rem">← Go home</a>
+    <a href="dashboard.php" style="background:rgba(255,255,255,.08);color:#fff;padding:.75rem 1.5rem;border-radius:.75rem;font-size:.875rem;border:1px solid rgba(255,255,255,.12)">Dashboard</a>
   </div>
 </div>
 </body>
