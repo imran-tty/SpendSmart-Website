@@ -24,7 +24,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             if($lim>0){
                 $st2=$db->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=? AND MONTH(expense_date)=? AND YEAR(expense_date)=? AND expense_id!=?");
                 $st2->execute([$uid,$m,$y,$eid]);$spent=(float)$st2->fetchColumn();
-                if($spent+$amount>$lim){$rem=max($lim-$spent,0);flash('❌ Budget exceeded! Limit: '.tk($lim).' · Spent: '.tk($spent).' · Remaining: '.tk($rem).'.','danger');header("Location: dashboard.php?p=expenses&act=".($eid?'edit&id='.$eid:'add'));exit;}
+                if($spent+$amount>$lim){$rem=max($lim-$spent,0);flash(' Budget exceeded! Limit: '.tk($lim).' · Spent: '.tk($spent).' · Remaining: '.tk($rem).'.','danger');header("Location: dashboard.php?p=expenses&act=".($eid?'edit&id='.$eid:'add'));exit;}
             }
         }
         if($eid){$db->prepare("UPDATE expenses SET title=?,amount=?,category_id=?,expense_date=? WHERE expense_id=? AND user_id=?")->execute([$title,$amount,$cat,$date,$eid,$uid]);flash('Expense updated.');}
@@ -89,7 +89,6 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     }
 }
 
-// SHARED
 $st=$db->prepare("SELECT monthly_limit FROM budgets WHERE user_id=? AND month=? AND year=?");$st->execute([$uid,$m,$y]);$budget=(float)($st->fetchColumn()?:0);
 $st=$db->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=? AND MONTH(expense_date)=? AND YEAR(expense_date)=?");$st->execute([$uid,$m,$y]);$monthTotal=(float)$st->fetchColumn();
 $budgetLeft=$budget>0?max($budget-$monthTotal,0):null;
@@ -106,10 +105,10 @@ $IF="inp-field w-full px-3.5 py-2.5 rounded-xl text-sm";
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SpendSmart</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="https:
 <script>tailwind.config={theme:{extend:{colors:{a:'#f59e0b',g:'#10b981',b:'#06b6d4'},fontFamily:{sans:['Inter','ui-sans-serif'],mono:['JetBrains Mono','ui-monospace']}}}}</script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link href="https:
+<script src="https:
 <style>
 body{background:linear-gradient(160deg,#0f172a 0%,#1e1b4b 40%,#0c1a2e 100%);min-height:100vh;color:#fff}
 .sb{background:rgba(15,23,42,.92);backdrop-filter:blur(20px);border-right:1px solid rgba(255,255,255,.07)}
@@ -143,12 +142,12 @@ tr:last-child td{border-bottom:none}
     <div class="text-white/25 text-xs mt-0.5">Track Smart, Spend Better</div>
   </div>
   <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-    <?php foreach([['home','Dashboard','🏠'],['expenses','Expenses','💸'],['categories','Categories','🏷️'],['savings','Savings','🏦'],['profile','Profile','👤']]as[$k,$l,$i]):$a=$page===$k;?>
+    <?php foreach([['home','Dashboard',''],['expenses','Expenses',''],['categories','Categories','️'],['savings','Savings',''],['profile','Profile','']]as[$k,$l,$i]):$a=$page===$k;?>
     <a href="dashboard.php?p=<?=$k?>" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition <?=$a?'na':'ni'?>"><span><?=$i?></span><?=$l?></a>
     <?php endforeach;?>
   </nav>
   <div class="px-4 py-3 mx-3 mb-2 rounded-xl" style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2)">
-    <div class="text-xs text-g/60 font-semibold uppercase tracking-wider mb-1">🔒 Sealed Savings</div>
+    <div class="text-xs text-g/60 font-semibold uppercase tracking-wider mb-1"> Sealed Savings</div>
     <div class="text-lg font-bold font-mono text-g"><?=tk($savingsBalance)?></div>
   </div>
   <div class="px-4 py-4" style="border-top:1px solid rgba(255,255,255,.07)">
@@ -168,19 +167,17 @@ tr:last-child td{border-bottom:none}
 <?php endif;?>
 
 <?php
-// ══ HOME ══════════════════════════════════════════════════════
+
 if($page==='home'):
 $st=$db->prepare("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE user_id=?");$st->execute([$uid]);$allTotal=(float)$st->fetchColumn();
 $st=$db->prepare("SELECT COUNT(*) FROM expenses WHERE user_id=? AND MONTH(expense_date)=? AND YEAR(expense_date)=?");$st->execute([$uid,$m,$y]);$expCount=(int)$st->fetchColumn();
 
-// PIE — current month only
 $st=$db->prepare("SELECT c.category_name,c.category_color,COALESCE(SUM(e.amount),0) AS total
     FROM categories c LEFT JOIN expenses e ON e.category_id=c.category_id
       AND MONTH(e.expense_date)=? AND YEAR(e.expense_date)=?
     WHERE c.user_id=? GROUP BY c.category_id HAVING total>0 ORDER BY total DESC");
 $st->execute([$m,$y,$uid]);$catData=$st->fetchAll();
 
-// BAR — last 6 months
 $barL=[];$barA=[];
 for($i=5;$i>=0;$i--){
     $dt=new DateTime("first day of -$i month");$barL[]=$dt->format('M');
@@ -188,7 +185,6 @@ for($i=5;$i>=0;$i--){
     $s2->execute([$uid,(int)$dt->format('n'),(int)$dt->format('Y')]);$barA[]=(float)$s2->fetchColumn();
 }
 
-// RECENT — current month only (synced with pie chart)
 $st=$db->prepare("SELECT e.*,c.category_name,c.category_color FROM expenses e
     LEFT JOIN categories c ON c.category_id=e.category_id
     WHERE e.user_id=? AND MONTH(e.expense_date)=? AND YEAR(e.expense_date)=?
@@ -204,13 +200,13 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
 
 <?php if($budget>0&&$budgetPct>=90):?>
 <div class="mb-5 px-4 py-3 rounded-xl text-sm font-semibold border <?=$overBudget?'bg-red-500/15 text-red-300 border-red-500/30':'bg-a/10 text-a border-a/25'?>">
-  <?=$overBudget?'⚠ Budget exceeded! Spent '.tk($monthTotal).' of '.tk($budget).'.':'⚠ '.round($budgetPct).'% used. '.tk($budgetLeft).' remaining.'?>
+  <?=$overBudget?' Budget exceeded! Spent '.tk($monthTotal).' of '.tk($budget).'.':' '.round($budgetPct).'% used. '.tk($budgetLeft).' remaining.'?>
 </div>
 <?php endif;?>
 
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   <div class="sc" style="<?=$overBudget?'border-color:rgba(239,68,68,.3)':''?>">
-    <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">💸 Spent</div>
+    <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2"> Spent</div>
     <div class="text-2xl font-bold font-mono <?=$overBudget?'text-red-400':'text-a'?>"><?=tk($monthTotal)?></div>
     <div class="text-xs text-white/25 mt-1"><?=date('F')?> expenses only</div>
     <?php if($budget>0):?>
@@ -219,19 +215,19 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
     <?php endif;?>
   </div>
   <div class="sc" style="<?=$overBudget?'border-color:rgba(239,68,68,.3)':($budgetPct>=90?'border-color:rgba(245,158,11,.3)':'')?>">
-    <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">💰 Budget Left</div>
+    <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2"> Budget Left</div>
     <?php if($budget>0):?>
     <div class="text-2xl font-bold font-mono <?=$overBudget?'text-red-400':($budgetPct>=90?'text-a':'text-g')?>"><?=$overBudget?'-'.tk($monthTotal-$budget):tk($budgetLeft)?></div>
     <div class="text-xs text-white/25 mt-1"><?=$overBudget?'Over limit':'Remaining'?></div>
     <?php else:?><div class="text-lg font-bold text-white/30">No limit</div><a href="dashboard.php?p=profile" class="text-xs text-a hover:underline">Set budget →</a><?php endif;?>
   </div>
   <div class="sc">
-    <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">📋 Expenses</div>
+    <div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2"> Expenses</div>
     <div class="text-2xl font-bold font-mono text-b"><?=$expCount?></div>
     <div class="text-xs text-white/25 mt-1"><?=date('F')?> this month</div>
   </div>
   <div class="sc" style="background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2)">
-    <div class="text-xs font-semibold text-g/60 uppercase tracking-wider mb-2">🔒 Savings</div>
+    <div class="text-xs font-semibold text-g/60 uppercase tracking-wider mb-2"> Savings</div>
     <div class="text-2xl font-bold font-mono text-g"><?=tk($savingsBalance)?></div>
     <div class="text-xs text-white/25 mt-1">sealed vault</div>
     <a href="dashboard.php?p=savings" class="text-xs text-g hover:underline mt-1 block">Manage →</a>
@@ -239,9 +235,9 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-  <!-- PIE: current month spending by category -->
+  
   <div class="card p-5">
-    <div class="text-sm font-bold mb-0.5">📊 Spending by Category</div>
+    <div class="text-sm font-bold mb-0.5"> Spending by Category</div>
     <div class="text-xs text-white/30 mb-4"><?=date('F Y')?> · Total: <?=tk($monthTotal)?></div>
     <?php if($catData):?>
     <div class="relative h-44 mb-4"><canvas id="pieChart"></canvas></div>
@@ -260,20 +256,19 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
     <div class="h-44 flex items-center justify-center text-sm text-white/25">No expenses in <?=date('F')?> yet.</div>
     <?php endif;?>
   </div>
-  <!-- BAR: last 6 months -->
+  
   <div class="card p-5">
-    <div class="text-sm font-bold mb-0.5">📈 Last 6 Months</div>
+    <div class="text-sm font-bold mb-0.5"> Last 6 Months</div>
     <div class="text-xs text-white/30 mb-4">Monthly expense trend</div>
     <div class="relative h-44"><canvas id="barChart"></canvas></div>
   </div>
 </div>
 
-<!-- RECENT: current month only — synced with pie chart -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
   <div class="card p-5 lg:col-span-2">
     <div class="flex justify-between items-center mb-4">
       <div>
-        <div class="text-sm font-bold">🕐 Recent Expenses</div>
+        <div class="text-sm font-bold"> Recent Expenses</div>
         <div class="text-xs text-white/30 mt-0.5"><?=date('F Y')?> · synced with chart</div>
       </div>
       <a href="dashboard.php?p=expenses&month=<?=date('Y-m')?>" class="text-xs text-a hover:underline">View <?=date('F')?> →</a>
@@ -295,7 +290,7 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
   </div>
 
   <div class="card p-5" style="background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,182,212,.06));border-color:rgba(16,185,129,.2)">
-    <div class="text-sm font-bold text-g mb-0.5">🔒 Savings Vault</div>
+    <div class="text-sm font-bold text-g mb-0.5"> Savings Vault</div>
     <div class="text-xs text-white/25 mb-4">Sealed · Independent from budget</div>
     <div class="text-3xl font-bold font-mono text-g mb-1"><?=tk($savingsBalance)?></div>
     <div class="text-xs text-white/25 mb-4">sealed balance</div>
@@ -304,7 +299,7 @@ $bc=$budgetPct>=100?'#ef4444':($budgetPct>=90?'#f59e0b':'#10b981');
     if($rs):?><div class="mt-4 pt-4 space-y-2" style="border-top:1px solid rgba(255,255,255,.08)">
     <?php foreach($rs as $s):?>
     <div class="flex justify-between items-center">
-      <span class="text-xs font-bold <?=$s['type']==='deposit'?'text-g':'text-red-400'?>"><?=$s['type']==='deposit'?'🔒 Sealed':'🔓 Unsealed'?></span>
+      <span class="text-xs font-bold <?=$s['type']==='deposit'?'text-g':'text-red-400'?>"><?=$s['type']==='deposit'?' Sealed':' Unsealed'?></span>
       <span class="text-xs font-mono font-bold <?=$s['type']==='deposit'?'text-g':'text-red-400'?>"><?=$s['type']==='deposit'?'+':'-'?><?=tk($s['amount'])?></span>
     </div>
     <?php endforeach;?></div><?php endif;?>
@@ -327,7 +322,7 @@ new Chart(document.getElementById('barChart'),{type:'bar',
 </script>
 
 <?php
-// ══ EXPENSES ══════════════════════════════════════════════════
+
 elseif($page==='expenses'):
 $sub=$_GET['act']??'list';$editing=null;
 if($sub==='edit'&&isset($_GET['id'])){$st=$db->prepare("SELECT * FROM expenses WHERE expense_id=? AND user_id=?");$st->execute([(int)$_GET['id'],$uid]);$editing=$st->fetch();}
@@ -342,16 +337,16 @@ $st->execute($pr);$expenses=$st->fetchAll();
 $st=$db->prepare("SELECT COALESCE(SUM(e.amount),0) FROM expenses e $wh");$st->execute($pr);$fSum=(float)$st->fetchColumn();
 ?>
 <div class="flex justify-between items-center mb-6">
-  <div><h1 class="text-2xl font-bold">💸 Expenses</h1><p class="text-white/35 text-sm mt-0.5"><?=$tot?> records · <?=tk($fSum)?></p></div>
+  <div><h1 class="text-2xl font-bold"> Expenses</h1><p class="text-white/35 text-sm mt-0.5"><?=$tot?> records · <?=tk($fSum)?></p></div>
   <a href="dashboard.php?p=expenses&act=add" class="bp">+ Add</a>
 </div>
 
 <?php if($sub==='add'||$sub==='edit'):?>
 <?php if($budget>0):$rem=max($budget-$monthTotal,0);?>
 <div class="mb-4 px-4 py-3 rounded-xl text-sm border <?=$overBudget?'bg-red-500/15 text-red-300 border-red-500/30':($budgetPct>=90?'bg-a/10 text-a border-a/25':'bg-g/10 text-g border-g/25')?>">
-  <?php if($overBudget):?>❌ <?=date('F')?> budget exceeded. Cannot add more expenses this month.
-  <?php elseif($budgetPct>=90):?>⚠ Only <?=tk($rem)?> remaining in <?=date('F')?> budget.
-  <?php else:?>✅ <?=tk($rem)?> available in <?=date('F')?> budget.<?php endif;?>
+  <?php if($overBudget):?> <?=date('F')?> budget exceeded. Cannot add more expenses this month.
+  <?php elseif($budgetPct>=90):?> Only <?=tk($rem)?> remaining in <?=date('F')?> budget.
+  <?php else:?> <?=tk($rem)?> available in <?=date('F')?> budget.<?php endif;?>
 </div>
 <?php endif;?>
 <div class="card p-6 max-w-lg">
@@ -421,7 +416,7 @@ $st=$db->prepare("SELECT COALESCE(SUM(e.amount),0) FROM expenses e $wh");$st->ex
 <?php endif;?>
 
 <?php
-// ══ CATEGORIES ════════════════════════════════════════════════
+
 elseif($page==='categories'):
 $sub=$_GET['act']??'list';$editCat=null;
 if($sub==='edit'&&isset($_GET['id'])){$st=$db->prepare("SELECT * FROM categories WHERE category_id=? AND user_id=?");$st->execute([(int)$_GET['id'],$uid]);$editCat=$st->fetch();}
@@ -429,7 +424,7 @@ $st=$db->prepare("SELECT c.*,COUNT(e.expense_id) AS cnt,COALESCE(SUM(e.amount),0
 $st->execute([$uid]);$cats=$st->fetchAll();
 ?>
 <div class="flex justify-between items-center mb-6">
-  <div><h1 class="text-2xl font-bold">🏷️ Categories</h1><p class="text-white/35 text-sm mt-0.5"><?=count($cats)?> total</p></div>
+  <div><h1 class="text-2xl font-bold">️ Categories</h1><p class="text-white/35 text-sm mt-0.5"><?=count($cats)?> total</p></div>
   <a href="dashboard.php?p=categories&act=add" class="bp">+ New</a>
 </div>
 <?php if($sub==='add'||$sub==='edit'):?>
@@ -471,19 +466,19 @@ $st->execute([$uid]);$cats=$st->fetchAll();
 <?php endif;?>
 
 <?php
-// ══ SAVINGS ═══════════════════════════════════════════════════
+
 elseif($page==='savings'):
 $st=$db->prepare("SELECT * FROM savings WHERE user_id=? ORDER BY created_at DESC LIMIT 50");$st->execute([$uid]);$savLogs=$st->fetchAll();
 $st=$db->prepare("SELECT COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE 0 END),0) AS td,COALESCE(SUM(CASE WHEN type='withdraw' THEN amount ELSE 0 END),0) AS tw FROM savings WHERE user_id=?");
 $st->execute([$uid]);$ss=$st->fetch();
 ?>
-<div class="mb-6"><h1 class="text-2xl font-bold">🏦 Savings Vault</h1><p class="text-white/35 text-sm mt-0.5">Sealed from budget · Withdraw anytime</p></div>
+<div class="mb-6"><h1 class="text-2xl font-bold"> Savings Vault</h1><p class="text-white/35 text-sm mt-0.5">Sealed from budget · Withdraw anytime</p></div>
 <div class="mb-5 px-4 py-3 rounded-xl text-sm border" style="background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2);color:rgba(16,185,129,.9)">
-  🔒 Savings are <strong>sealed</strong> and completely separate from your budget.
+   Savings are <strong>sealed</strong> and completely separate from your budget.
 </div>
 <div class="grid grid-cols-3 gap-4 mb-6">
   <div class="card p-5" style="background:linear-gradient(135deg,rgba(16,185,129,.15),rgba(6,182,212,.08));border-color:rgba(16,185,129,.3)">
-    <div class="text-xs font-semibold text-g/60 uppercase tracking-wider mb-2">🔒 Sealed Balance</div>
+    <div class="text-xs font-semibold text-g/60 uppercase tracking-wider mb-2"> Sealed Balance</div>
     <div class="text-3xl font-bold font-mono text-g"><?=tk($savingsBalance)?></div>
   </div>
   <div class="card p-5"><div class="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">↑ Total Sealed</div><div class="text-2xl font-bold font-mono text-g"><?=tk($ss['td'])?></div></div>
@@ -491,7 +486,7 @@ $st->execute([$uid]);$ss=$st->fetch();
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
   <div class="card p-6" style="border-color:rgba(16,185,129,.25)">
-    <div class="text-sm font-bold text-g mb-1">🔒 Seal Money into Vault</div>
+    <div class="text-sm font-bold text-g mb-1"> Seal Money into Vault</div>
     <div class="text-xs text-white/25 mb-4">Locks money away from daily spending</div>
     <form method="POST" action="dashboard.php">
       <input type="hidden" name="act" value="save_saving"><input type="hidden" name="stype" value="deposit">
@@ -499,11 +494,11 @@ $st->execute([$uid]);$ss=$st->fetch();
       <input type="number" name="amount" class="<?=$IF?> mb-3" step="0.01" min="0.01" placeholder="0.00" required>
       <label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Note <span class="normal-case font-normal text-white/20">optional</span></label>
       <input type="text" name="note" class="<?=$IF?> mb-4" placeholder="e.g. Emergency fund">
-      <button type="submit" class="bp" style="background:#10b981;width:100%;justify-content:center">🔒 Seal into Vault</button>
+      <button type="submit" class="bp" style="background:#10b981;width:100%;justify-content:center"> Seal into Vault</button>
     </form>
   </div>
   <div class="card p-6" style="border-color:rgba(239,68,68,.2)">
-    <div class="text-sm font-bold text-red-400 mb-1">🔓 Unseal from Vault</div>
+    <div class="text-sm font-bold text-red-400 mb-1"> Unseal from Vault</div>
     <div class="text-xs text-white/25 mb-4">Available: <span class="font-mono font-bold text-g"><?=tk($savingsBalance)?></span></div>
     <form method="POST" action="dashboard.php" onsubmit="return confirm('Unseal from savings?')">
       <input type="hidden" name="act" value="save_saving"><input type="hidden" name="stype" value="withdraw">
@@ -512,7 +507,7 @@ $st->execute([$uid]);$ss=$st->fetch();
       <div class="text-xs text-white/25 mb-3">Max: <?=tk($savingsBalance)?></div>
       <label class="block text-xs font-semibold text-white/35 uppercase tracking-wider mb-1.5">Note <span class="normal-case font-normal text-white/20">optional</span></label>
       <input type="text" name="note" class="<?=$IF?> mb-4" placeholder="e.g. Medical emergency">
-      <button type="submit" <?=$savingsBalance<=0?'disabled':''?> class="w-full font-bold py-2.5 rounded-xl text-sm" style="background:<?=$savingsBalance>0?'rgba(239,68,68,.25)':'rgba(255,255,255,.05)'?>;color:<?=$savingsBalance>0?'#fca5a5':'rgba(255,255,255,.2)'?>;border:1px solid <?=$savingsBalance>0?'rgba(239,68,68,.35)':'rgba(255,255,255,.08)'?>;cursor:<?=$savingsBalance>0?'pointer':'not-allowed'?>"><?=$savingsBalance>0?'🔓 Unseal from Vault':'No sealed savings'?></button>
+      <button type="submit" <?=$savingsBalance<=0?'disabled':''?> class="w-full font-bold py-2.5 rounded-xl text-sm" style="background:<?=$savingsBalance>0?'rgba(239,68,68,.25)':'rgba(255,255,255,.05)'?>;color:<?=$savingsBalance>0?'#fca5a5':'rgba(255,255,255,.2)'?>;border:1px solid <?=$savingsBalance>0?'rgba(239,68,68,.35)':'rgba(255,255,255,.08)'?>;cursor:<?=$savingsBalance>0?'pointer':'not-allowed'?>"><?=$savingsBalance>0?' Unseal from Vault':'No sealed savings'?></button>
     </form>
   </div>
 </div>
@@ -525,7 +520,7 @@ $st->execute([$uid]);$ss=$st->fetch();
   <table><thead><tr><th>Action</th><th>Note</th><th>Date & Time</th><th style="text-align:right">Amount</th></tr></thead><tbody>
   <?php foreach($savLogs as $s):?>
   <tr>
-    <td><span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold <?=$s['type']==='deposit'?'bg-g/20 text-g':'bg-red-500/20 text-red-400'?>"><?=$s['type']==='deposit'?'🔒 Sealed':'🔓 Unsealed'?></span></td>
+    <td><span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold <?=$s['type']==='deposit'?'bg-g/20 text-g':'bg-red-500/20 text-red-400'?>"><?=$s['type']==='deposit'?' Sealed':' Unsealed'?></span></td>
     <td class="text-white/45"><?=$s['note']?e($s['note']):'—'?></td>
     <td class="text-white/25 font-mono text-xs"><?=date('d M Y, h:i A',strtotime($s['created_at']))?></td>
     <td class="text-right font-mono font-bold <?=$s['type']==='deposit'?'text-g':'text-red-400'?>"><?=$s['type']==='deposit'?'+':'-'?><?=tk($s['amount'])?></td>
@@ -536,12 +531,12 @@ $st->execute([$uid]);$ss=$st->fetch();
 </div>
 
 <?php
-// ══ PROFILE ═══════════════════════════════════════════════════
+
 elseif($page==='profile'):
 $st=$db->prepare("SELECT * FROM users WHERE user_id=?");$st->execute([$uid]);$u=$st->fetch();
 $st=$db->prepare("SELECT monthly_limit FROM budgets WHERE user_id=? AND month=? AND year=?");$st->execute([$uid,$m,$y]);$curBudget=$st->fetchColumn()?:'';
 ?>
-<div class="mb-6"><h1 class="text-2xl font-bold">👤 Profile</h1><p class="text-white/35 text-sm mt-0.5">Manage your account</p></div>
+<div class="mb-6"><h1 class="text-2xl font-bold"> Profile</h1><p class="text-white/35 text-sm mt-0.5">Manage your account</p></div>
 <div class="flex flex-col gap-5 max-w-lg">
   <div class="card p-6">
     <p class="text-sm font-bold pb-4 mb-5" style="border-bottom:1px solid rgba(255,255,255,.07)">Account Info</p>
